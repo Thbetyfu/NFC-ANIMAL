@@ -171,6 +171,28 @@ Dokumen disimpan dengan ID berupa UID Tag NFC (Format: `XX-XX-XX-XX-XX-XX-XX`).
 2. **Dynamic Coloring**: Indikasi visual yang kuat dengan warna berbeda di setiap jenis hewan berdasarkan kelangkaannya guna memudahkan klasifikasi.
 3. **Interactive Control Hint**: Penempatan teks petunjuk "Putar untuk melihat" pada visualizer 3D agar pengguna mengetahui bahwa objek 3D dapat disentuh dan diputar 360°.
 
+### Spesifikasi Perangkat Target (Target Device Specifications):
+Spesifikasi perangkat ditentukan untuk memastikan fitur pembacaan hardware (NFC), rendering visual 3D, dan proyeksi kamera (AR) dapat berjalan stabil tanpa memicu crash memori (Out-of-Memory) atau panas berlebih pada ponsel.
+
+#### 1. Spesifikasi Minimum (Untuk Menjalankan Game & Scan NFC Dasar):
+- **Sistem Operasi**: 
+  - Android 8.0 (Oreo, API Level 26) atau lebih baru.
+  - iOS 13.0 (iPhone 7) atau lebih baru.
+- **Hardware / Sensor**: Chip sensor NFC fisik internal yang aktif (Built-in NFC controller).
+- **Memori (RAM)**: 3 GB (Sisa RAM bebas minimal 1.5 GB saat menjalankan game).
+- **GPU**: Dukungan OpenGL ES 3.0.
+
+#### 2. Spesifikasi Rekomendasi (Untuk Performa 3D Mulus & 60 FPS):
+- **Sistem Operasi**: Android 10.0+ atau iOS 15.0+.
+- **Memori (RAM)**: 4 GB atau lebih besar.
+- **GPU**: Perangkat dengan dukungan Vulkan API (Android) atau Metal API (iOS).
+- **Koneksi**: Internet stabil (Wi-Fi/4G LTE) untuk sinkronisasi cloud real-time.
+
+#### 3. Kebutuhan Khusus Fitur Masa Depan (AR - Augmented Reality):
+- **Android**: Perangkat harus terdaftar dalam daftar resmi pendukung **Google Play Services for AR (ARCore)**.
+- **iOS**: iPhone dengan chip Apple A9 atau lebih baru (Mendukung Apple ARKit).
+- **Sensor Tambahan**: Giroskop, Akselerometer, dan kamera belakang minimal 12 MP dengan autofokus.
+
 ---
 
 ## 7. RENCANA PENINGKATAN MENDATANG (FUTURE ROADMAP FOR MONETIZATION & ENGAGEMENT)
