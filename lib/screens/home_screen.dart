@@ -19,8 +19,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _authService = AuthService();
   final _gameService = GameService();
   
-  late PageController _pageController;
-  double _currentPage = 0.0;
+  int _selectedIndex = 0;
   Timer? _uiTimer;
 
   // Set untuk menyimpan id pet yang sedang diproses agar animasi loading terlihat individual
@@ -30,15 +29,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(viewportFraction: 0.8)
-      ..addListener(() {
-        if (mounted) {
-          setState(() {
-            _currentPage = _pageController.page ?? 0.0;
-          });
-        }
-      });
-
     // Jalankan timer pembaruan 1 detik untuk menghitung mundur cooldown live
     _uiTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
@@ -49,7 +39,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _pageController.dispose();
     _uiTimer?.cancel();
     super.dispose();
   }
@@ -122,17 +111,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final double screenHeight = MediaQuery.of(context).size.height;
     final double screenWidth = MediaQuery.of(context).size.width;
 
-    // Hitung dimensi kartu secara responsif berdasarkan tinggi layar (Rasio emas 282.64 / 612.0 = 0.4618)
-    double cardHeight = screenHeight * 0.58;
+    // TCG Card dimensions matching 282.64 x 612 ratio (0.4618)
+    double cardHeight = screenHeight * 0.62;
     if (cardHeight > 612.0) {
       cardHeight = 612.0;
-    } else if (cardHeight < 450.0) {
-      cardHeight = 450.0;
+    } else if (cardHeight < 460.0) {
+      cardHeight = 460.0;
     }
     double cardWidth = cardHeight * 0.4618;
 
-    // Batasi lebar kartu agar tidak overflow secara horizontal pada layar sempit (viewportFraction = 0.8)
-    final double maxCardWidth = screenWidth * 0.72;
+    final double maxCardWidth = screenWidth * 0.82;
     if (cardWidth > maxCardWidth) {
       cardWidth = maxCardWidth;
       cardHeight = cardWidth / 0.4618;
@@ -143,10 +131,16 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, snapshot) {
         final pets = snapshot.data ?? [];
 
-        // Hitung warna glow latar belakang berdasarkan pet aktif di carousel
+        // Validasi indeks terpilih
+        if (pets.isNotEmpty && _selectedIndex >= pets.length) {
+          _selectedIndex = pets.length - 1;
+        }
+
+        // Hitung warna glow latar belakang berdasarkan pet aktif di showcase
         Color activeThemeColor = Colors.blue.shade600;
-        if (pets.isNotEmpty && _currentPage.round() < pets.length) {
-          final activePet = pets[_currentPage.round()];
+        Pet? activePet;
+        if (pets.isNotEmpty) {
+          activePet = pets[_selectedIndex];
           activeThemeColor = Color(
             int.parse(Pet.getTipeColor(activePet.tipe).substring(1), radix: 16) +
                 0xFF000000,
@@ -184,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     bottom: screenHeight * 0.05,
                     right: -100,
                     child: _BackgroundBlob(
-                      color: Colors.orange.withOpacity(0.1),
+                      color: Colors.orange.withOpacity(0.08),
                       size: 360,
                     ),
                   ),
@@ -195,52 +189,34 @@ class _HomeScreenState extends State<HomeScreen> {
                       // Header Profil Pengguna
                       _buildHeader(currentUser),
 
-                      // Carousel Kartu / Empty State
+                      // Area Showcase Kartu Utama
                       Expanded(
-                        child: pets.isEmpty
+                        child: activePet == null
                             ? _buildEmptyState(cardWidth, cardHeight)
-                            : PageView.builder(
-                                controller: _pageController,
-                                itemCount: pets.length,
-                                itemBuilder: (context, index) {
-                                  final pet = pets[index];
-
-                                  // Efek kedalaman 3D menggunakan transformasi matriks scaling
-                                  double scaleValue = 1.0;
-                                  if (_pageController.position.haveDimensions) {
-                                    scaleValue = (_currentPage - index);
-                                    scaleValue =
-                                        (1 - (scaleValue.abs() * 0.15)).clamp(0.0, 1.0);
-                                  } else {
-                                    scaleValue = index == 0 ? 1.0 : 0.85;
-                                  }
-
-                                  final feedCooldown = _getFeedCooldownSeconds(pet);
-                                  final trainCooldown = _getTrainCooldownSeconds(pet);
-
-                                  return Transform.scale(
-                                    scale: scaleValue,
-                                    child: Align(
-                                      alignment: Alignment.center,
-                                      child: InteractivePetCard(
-                                        pet: pet,
-                                        width: cardWidth,
-                                        height: cardHeight,
-                                        onTap: () => _openPetDetail(pet),
-                                        actionButtons: _buildCardActions(
-                                          context,
-                                          pet,
-                                          feedCooldown,
-                                          trainCooldown,
-                                        ),
-                                      ),
+                            : Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  ShowcasePetCard(
+                                    pet: activePet,
+                                    width: cardWidth,
+                                    height: cardHeight,
+                                    onTap: () => _openPetDetail(activePet!),
+                                    actionButtons: _buildCardActions(
+                                      context,
+                                      activePet,
+                                      _getFeedCooldownSeconds(activePet),
+                                      _getTrainCooldownSeconds(activePet),
                                     ),
-                                  );
-                                },
+                                  ),
+                                  
+                                  // Selector thumbnail peliharaan lain
+                                  if (pets.length > 1)
+                                    _buildThumbnailList(pets, cardWidth),
+                                ],
                               ),
                       ),
                       
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 70), // Beri ruang agar tidak terbentur FAB
                     ],
                   ),
                 ],
@@ -328,7 +304,7 @@ class _HomeScreenState extends State<HomeScreen> {
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: const Color(0xFF1E293B).withOpacity(0.4),
+          color: const Color(0xFF1E293B),
           borderRadius: BorderRadius.circular(32),
           border: Border.all(
             color: Colors.white.withOpacity(0.1),
@@ -344,51 +320,111 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(30),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.nfc_outlined,
-                      size: 64,
-                      color: Colors.orange.shade400,
-                    ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.12),
+                    shape: BoxShape.circle,
                   ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Kandang Kosong',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
+                  child: Icon(
+                    Icons.nfc_outlined,
+                    size: 64,
+                    color: Colors.orange.shade400,
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    AuthService.useMockMode
-                        ? 'Ketuk tombol "Simulasi Scan" di bawah untuk mendapatkan hewan pertama Anda!'
-                        : 'Dekatkan kartu atau tag NFC Anda ke bagian belakang ponsel untuk mengklaim hewan peliharaan baru!',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
-                      fontSize: 12,
-                      height: 1.5,
-                    ),
-                    textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Kandang Kosong',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
-                ],
-              ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  AuthService.useMockMode
+                      ? 'Ketuk tombol "Simulasi Scan" di bawah untuk mendapatkan hewan pertama Anda!'
+                      : 'Dekatkan kartu atau tag NFC Anda ke bagian belakang ponsel untuk mengklaim hewan peliharaan baru!',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.6),
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThumbnailList(List<Pet> pets, double cardWidth) {
+    return Container(
+      height: 64,
+      width: cardWidth,
+      margin: const EdgeInsets.only(top: 20),
+      child: Center(
+        child: ListView.builder(
+          shrinkWrap: true,
+          scrollDirection: Axis.horizontal,
+          itemCount: pets.length,
+          itemBuilder: (context, index) {
+            final pet = pets[index];
+            final bool isSelected = index == _selectedIndex;
+            final themeColor = Color(
+              int.parse(Pet.getTipeColor(pet.tipe).substring(1), radix: 16) + 0xFF000000,
+            );
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedIndex = index;
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? themeColor.withOpacity(0.15)
+                        : Colors.white.withOpacity(0.04),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected ? themeColor : Colors.white.withOpacity(0.1),
+                      width: isSelected ? 2.5 : 1.0,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: themeColor.withOpacity(0.3),
+                              blurRadius: 8,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Center(
+                    child: Icon(
+                      Icons.pets,
+                      size: 20,
+                      color: isSelected ? themeColor : Colors.white54,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -568,14 +604,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class InteractivePetCard extends StatelessWidget {
+class ShowcasePetCard extends StatelessWidget {
   final Pet pet;
   final double width;
   final double height;
   final VoidCallback onTap;
   final Widget actionButtons;
 
-  const InteractivePetCard({
+  const ShowcasePetCard({
     Key? key,
     required this.pet,
     required this.width,
@@ -594,320 +630,347 @@ class InteractivePetCard extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B).withOpacity(0.55), // Glassmorphism
+        color: const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(32),
         border: Border.all(
-          color: themeColor.withOpacity(0.35),
-          width: 2.0,
+          color: themeColor.withOpacity(0.5),
+          width: 3.0,
         ),
         boxShadow: [
+          // Elevasi bayangan multi-layered mensimulasikan drop shadow 4.46dp
           BoxShadow(
-            color: themeColor.withOpacity(0.12),
+            color: Colors.black.withOpacity(0.4),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: themeColor.withOpacity(0.15),
             blurRadius: 20,
             spreadRadius: 1,
-            offset: const Offset(0, 10),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(30),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Column(
-            children: [
-              // Top 3D Section
-              Expanded(
-                flex: 11,
-                child: Stack(
-                  children: [
-                    // Glow background behind 3D
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            colors: [
-                              themeColor.withOpacity(0.22),
-                              Colors.transparent,
-                            ],
-                            radius: 0.75,
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Model Viewer
-                    Positioned.fill(
-                      child: ModelViewer(
-                        src: pet.modelUrl,
-                        alt: "Model 3D ${pet.namaHewan}",
-                        ar: false,
-                        autoRotate: false,
-                        cameraControls: true,
-                        backgroundColor: Colors.transparent,
-                        loading: Loading.eager,
-                        disableZoom: true,
-                      ),
-                    ),
-                    // Rarity Badge (Floating)
-                    Positioned(
-                      top: 16,
-                      left: 16,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: themeColor.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: themeColor.withOpacity(0.5),
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Text(
-                          pet.tipe,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            shadows: [
-                              Shadow(
-                                color: themeColor,
-                                blurRadius: 8,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Clickable Zoom Icon / Hint
-                    Positioned(
-                      top: 16,
-                      right: 16,
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: onTap,
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.06),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.1),
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.zoom_in,
-                              color: Colors.white70,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Rotation Helper Info (Floating Bottom)
-                    Positioned(
-                      bottom: 12,
-                      right: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black38,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.threesixty, color: Colors.white70, size: 12),
-                            SizedBox(width: 4),
-                            Text(
-                              'Putar 3D',
-                              style: TextStyle(color: Colors.white70, fontSize: 8),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Divider
-              Container(
-                height: 1,
-                color: Colors.white.withOpacity(0.08),
-              ),
-
-              // Bottom Info Section
-              Expanded(
-                flex: 9,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Name & Level
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              pet.namaHewan,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Text(
-                            'LV. ${pet.level}',
-                            style: TextStyle(
-                              color: Colors.amber.shade400,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      // EXP bar
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Pengalaman (EXP)',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
-                                  fontSize: 10,
-                                ),
-                              ),
-                              Text(
-                                '${pet.exp}/100',
-                                style: TextStyle(
-                                  color: Colors.amber.shade300,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: LinearProgressIndicator(
-                              value: pet.exp / 100.0,
-                              minHeight: 6,
-                              backgroundColor: Colors.white.withOpacity(0.08),
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.amber.shade500),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      // Stats Row
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 6,
-                                horizontal: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.04),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.05),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.favorite,
-                                    size: 14,
-                                    color: Colors.red.shade400,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Text(
-                                      'HP: ${pet.currentHp}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 6,
-                                horizontal: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.04),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.05),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.flash_on,
-                                    size: 14,
-                                    color: Colors.orange.shade400,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Text(
-                                      'ATK: ${pet.currentAttack}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      // Action Buttons
-                      actionButtons,
+        borderRadius: BorderRadius.circular(29),
+        child: Stack(
+          children: [
+            // Mesh background gradien
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF1E293B),
+                      Color(0xFF0F172A),
                     ],
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+            
+            // Grid background tech
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.04,
+                child: CustomPaint(
+                  painter: _CardGridPainter(color: themeColor),
+                ),
+              ),
+            ),
+
+            // Glow radial dibelakang model
+            Align(
+              alignment: Alignment.topCenter,
+              child: Container(
+                height: height * 0.55,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    colors: [
+                      themeColor.withOpacity(0.25),
+                      Colors.transparent,
+                    ],
+                    radius: 0.7,
+                  ),
+                ),
+              ),
+            ),
+
+            // Ornamen Chip NFC Emas di pojok kanan atas (Amiibo style)
+            Positioned(
+              top: 20,
+              right: 20,
+              child: _NfcChipWidget(),
+            ),
+
+            // Kolom Konten Utama Kartu
+            Column(
+              children: [
+                // 3D Model Area
+                Expanded(
+                  flex: 11,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: ModelViewer(
+                          key: ValueKey(pet.id), // Memaksa rebuild model 3D saat pet berganti
+                          src: pet.modelUrl,
+                          alt: "Model 3D ${pet.namaHewan}",
+                          ar: false,
+                          autoRotate: false,
+                          cameraControls: true,
+                          backgroundColor: Colors.transparent,
+                          loading: Loading.eager,
+                          disableZoom: true,
+                        ),
+                      ),
+                      
+                      // Rarity Badge (Kiri Atas)
+                      Positioned(
+                        top: 20,
+                        left: 20,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: themeColor.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: themeColor.withOpacity(0.6),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Text(
+                            pet.tipe.toUpperCase(),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.2,
+                              shadows: [
+                                Shadow(
+                                  color: themeColor,
+                                  blurRadius: 6,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      
+                      // Clickable Zoom Icon
+                      Positioned(
+                        bottom: 12,
+                        left: 20,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: onTap,
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.06),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.1),
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.zoom_in,
+                                color: Colors.white70,
+                                size: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Rotation Helper Info (Kanan Bawah Area 3D)
+                      Positioned(
+                        bottom: 12,
+                        right: 20,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black38,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.threesixty, color: Colors.white70, size: 12),
+                              SizedBox(width: 4),
+                              Text(
+                                'Putar 3D',
+                                style: TextStyle(color: Colors.white70, fontSize: 8),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Separator Horizontal berwarna rarity
+                Container(
+                  height: 2,
+                  color: themeColor.withOpacity(0.2),
+                ),
+
+                // Area Statistik & Aksi di bagian bawah kartu
+                Expanded(
+                  flex: 9,
+                  child: Container(
+                    color: const Color(0xFF0F172A).withOpacity(0.85), // Latar belakang gelap padat
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Nama & Level
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                pet.namaHewan,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 19,
+                                  letterSpacing: 0.5,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Text(
+                              'LV.${pet.level}',
+                              style: TextStyle(
+                                color: Colors.amber.shade400,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 17,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        // EXP Progress
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'PENGALAMAN (EXP)',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.4),
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.0,
+                                  ),
+                                ),
+                                Text(
+                                  '${pet.exp}/100',
+                                  style: TextStyle(
+                                    color: Colors.amber.shade300,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: pet.exp / 100.0,
+                                minHeight: 6,
+                                backgroundColor: Colors.white.withOpacity(0.06),
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.amber.shade500),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        // Statistik
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildStatBadge(
+                                icon: Icons.favorite_rounded,
+                                label: 'HP',
+                                value: '${pet.currentHp}',
+                                color: Colors.red.shade400,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildStatBadge(
+                                icon: Icons.flash_on_rounded,
+                                label: 'ATK',
+                                value: '${pet.currentAttack}',
+                                color: Colors.orange.shade400,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        // Tombol Aksi
+                        actionButtons,
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatBadge({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.06),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 5),
+          Text(
+            '$label: ',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.4),
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1012,6 +1075,105 @@ class _BackgroundBlob extends StatelessWidget {
             color.withOpacity(0.0),
           ],
           stops: const [0.0, 1.0],
+        ),
+      ),
+    );
+  }
+}
+
+class _CardGridPainter extends CustomPainter {
+  final Color color;
+
+  _CardGridPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withOpacity(0.15)
+      ..strokeWidth = 0.5
+      ..style = PaintingStyle.stroke;
+
+    const double step = 20.0;
+    for (double x = 0; x < size.width; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (double y = 0; y < size.height; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _NfcChipWidget extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 32,
+      height: 38,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.amber.shade300,
+            Colors.amber.shade600,
+            Colors.amber.shade700,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.amber.shade800,
+          width: 1,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: List.generate(
+                3,
+                (index) => Container(
+                  width: 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.black38,
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              ),
+            ),
+            Container(
+              width: double.infinity,
+              height: 1.5,
+              color: Colors.black38,
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: List.generate(
+                3,
+                (index) => Container(
+                  width: 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.black38,
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
