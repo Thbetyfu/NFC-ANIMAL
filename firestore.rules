@@ -1,0 +1,17 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pengguna hanya bisa membaca/menulis data mereka sendiri
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 'master_hewan' bisa dibaca oleh siapa saja yang login,
+    // TAPI TIDAK BISA DITULIS/DIUPDATE SAMA SEKALI DARI KLIEN.
+    // Update HANYA akan dilakukan oleh Cloud Function.
+    match /master_hewan/{hewanId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if false; 
+    }
+  }
+}
