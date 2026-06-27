@@ -119,6 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final double screenHeight = MediaQuery.of(context).size.height;
+    final double screenWidth = MediaQuery.of(context).size.width;
 
     // Hitung dimensi kartu secara responsif berdasarkan tinggi layar (Rasio emas 282.64 / 612.0 = 0.4618)
     double cardHeight = screenHeight * 0.58;
@@ -127,7 +128,14 @@ class _HomeScreenState extends State<HomeScreen> {
     } else if (cardHeight < 450.0) {
       cardHeight = 450.0;
     }
-    final double cardWidth = cardHeight * 0.4618;
+    double cardWidth = cardHeight * 0.4618;
+
+    // Batasi lebar kartu agar tidak overflow secara horizontal pada layar sempit (viewportFraction = 0.8)
+    final double maxCardWidth = screenWidth * 0.72;
+    if (cardWidth > maxCardWidth) {
+      cardWidth = maxCardWidth;
+      cardHeight = cardWidth / 0.4618;
+    }
 
     return StreamBuilder<List<Pet>>(
       stream: _gameService.getOwnedPetsStream(currentUser.uid),
