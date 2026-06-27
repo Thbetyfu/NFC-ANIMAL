@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 import '../models/pet.dart';
+import '../models/user.dart';
 import '../services/auth_service.dart';
 import '../services/game_service.dart';
 import 'pet_detail_screen.dart';
